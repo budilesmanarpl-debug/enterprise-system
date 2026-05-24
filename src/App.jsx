@@ -9,6 +9,7 @@ import {
   FileText, 
   CheckCircle, 
   XCircle,
+  PauseCircle,
   PlusCircle,
   Trash2,
   ChevronRight,
@@ -29,7 +30,8 @@ import {
   Image as ImageIcon,
   FolderOpen,
   Search,
-  RefreshCw
+  RefreshCw,
+  History
 } from 'lucide-react';
 
 // --- KONFIGURASI SESI ---
@@ -177,6 +179,7 @@ const ALL_MENUS = [
   { id: 'master_employee', label: 'Master Karyawan', icon: <UserCircle className="w-5 h-5" /> },
   { id: 'dashboard_routing', label: 'Master Routing PIC', icon: <GitMerge className="w-5 h-5" /> },
   { id: 'master_role_access', label: 'Role Access (Hak Akses)', icon: <Lock className="w-5 h-5" /> },
+  { id: 'dashboard_logs', label: 'Log Perubahan', icon: <History className="w-5 h-5" /> },
 ];
 
 const PublicNavbar = ({ onNavigate, onLoginClick }) => (
@@ -788,8 +791,9 @@ const LoginPage = ({ onLogin, onBack, employees }) => {
 };
 
 // --- APLIKASI INTERNAL DASHBOARD: MANAJEMEN BERITA ---
-const NewsManagerApp = ({ news, setNews }) => {
+const NewsManagerApp = ({ news, setNews, addLog, user }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Press Release');
   const [content, setContent] = useState('');
@@ -823,30 +827,58 @@ const NewsManagerApp = ({ news, setNews }) => {
 
   const handleAddNews = (e) => {
     e.preventDefault();
-    const newNews = {
-      id: Date.now(),
-      title,
-      category,
-      content,
-      date: new Date().toISOString().split('T')[0],
-      author: "Admin Corporate",
-      image: image || "https://images.unsplash.com/photo-1506015391300-4802dc74de2e?auto=format&fit=crop&q=80&w=800"
-    };
+    if (editingId) {
+      setNews(news.map(n => n.id === editingId ? { 
+        ...n, 
+        title, 
+        category, 
+        content, 
+        image: image || n.image,
+        modifyDate: new Date().toLocaleString('id-ID'),
+        modifyBy: user.name
+      } : n));
+      addLog('UPDATE', 'Manajemen Berita', title);
+      setSuccessMsg('Berita berhasil diperbarui.');
+    } else {
+      const newNews = {
+        id: Date.now(),
+        title,
+        category,
+        content,
+        date: new Date().toISOString().split('T')[0],
+        author: "Admin Corporate",
+        image: image || "https://images.unsplash.com/photo-1506015391300-4802dc74de2e?auto=format&fit=crop&q=80&w=800",
+        modifyDate: new Date().toLocaleString('id-ID'),
+        modifyBy: user.name
+      };
+      setNews([newNews, ...news]);
+      addLog('CREATE', 'Manajemen Berita', title);
+      setSuccessMsg('Berita berhasil dipublikasikan secara real-time ke portal.');
+    }
 
-    setNews([newNews, ...news]);
     setTitle('');
     setContent('');
     setImage('');
     setImageName('');
+    setEditingId(null);
     setIsFormOpen(false);
-    setSuccessMsg('Berita berhasil dipublikasikan secara real-time ke portal.');
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
-  const handleDelete = (id) => {
-    setNews(news.filter(n => n.id !== id));
+  const handleDelete = (item) => {
+    setNews(news.filter(n => n.id !== item.id));
+    addLog('DELETE', 'Manajemen Berita', item.title);
     setSuccessMsg('Berita berhasil dihapus.');
     setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  const handleEdit = (item) => {
+    setEditingId(item.id);
+    setTitle(item.title);
+    setCategory(item.category);
+    setContent(item.content);
+    setImage(item.image);
+    setIsFormOpen(true);
   };
 
   return (
@@ -863,6 +895,7 @@ const NewsManagerApp = ({ news, setNews }) => {
             setImage('');
             setImageName('');
             setErrorMsg('');
+            setEditingId(null);
             setIsFormOpen(!isFormOpen);
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg flex items-center text-sm font-semibold shadow-sm transition-colors w-full sm:w-auto justify-center"
@@ -886,7 +919,7 @@ const NewsManagerApp = ({ news, setNews }) => {
 
       {isFormOpen && (
         <div className="bg-white p-4 md:p-6 rounded-xl shadow-md border border-slate-200 mb-6 max-w-3xl animate-fadeIn">
-          <h3 className="text-lg font-bold mb-4 border-b pb-2 text-slate-800">Publikasikan Berita Baru</h3>
+          <h3 className="text-lg font-bold mb-4 border-b pb-2 text-slate-800">{editingId ? 'Sunting Berita' : 'Publikasikan Berita Baru'}</h3>
           <form onSubmit={handleAddNews}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -965,7 +998,7 @@ const NewsManagerApp = ({ news, setNews }) => {
             </div>
 
             <button type="submit" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-colors">
-              Publikasikan Sekarang
+              {editingId ? 'Simpan Perubahan' : 'Publikasikan Sekarang'}
             </button>
           </form>
         </div>
@@ -977,6 +1010,8 @@ const NewsManagerApp = ({ news, setNews }) => {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Artikel Berita</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Kategori</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Modifikasi</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Oleh</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Tanggal Rilis</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aksi</th>
             </tr>
@@ -993,13 +1028,32 @@ const NewsManagerApp = ({ news, setNews }) => {
                     {item.category}
                   </span>
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500 font-mono">
+                  {item.modifyDate || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600 font-semibold">
+                  {item.modifyBy || 'System'}
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                   {item.date}
                 </td>
-                <td className="px-6 py-4 text-right animate-fadeIn">
-                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded">
-                    <Trash2 className="w-4 h-4 inline" />
-                  </button>
+                <td className="px-6 py-4 text-right">
+                  <div className="flex justify-end gap-2">
+                    <button 
+                      onClick={() => handleEdit(item)} 
+                      className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded transition-colors"
+                      title="Sunting Berita"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(item)} 
+                      className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded transition-colors"
+                      title="Hapus Berita"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1011,8 +1065,9 @@ const NewsManagerApp = ({ news, setNews }) => {
 };
 
 // --- APLIKASI INTERNAL DASHBOARD: MANAJEMEN FORM & PROSEDUR ---
-const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => {
+const FormProcedureManagerApp = ({ procedures, setProcedures, departments, addLog, user }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [department, setDepartment] = useState('');
@@ -1046,36 +1101,55 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
     if (!department) return;
 
     const newProc = {
-      id: Date.now(),
+      id: editingId || Date.now(),
       title,
       description,
       department,
       category, 
       type,
       size: fileSize,
-      attachment: uploadedFile
+      attachment: uploadedFile || (editingId ? procedures.find(p => p.id === editingId)?.attachment : null),
+      modifyDate: new Date().toLocaleString('id-ID'),
+      modifyBy: user.name
     };
 
-    setProcedures([newProc, ...procedures]);
+    if (editingId) {
+      setProcedures(procedures.map(p => p.id === editingId ? newProc : p));
+      addLog('UPDATE', 'Form & Prosedur', title);
+      setSuccessMsg('Dokumen berhasil diperbarui.');
+    } else {
+      setProcedures([newProc, ...procedures]);
+      addLog('CREATE', 'Form & Prosedur', title);
+      setSuccessMsg('Dokumen formulir/prosedur baru berhasil dipublikasikan untuk publik.');
+    }
     
     // Reset fields
     setTitle('');
     setDescription('');
     setDepartment('');
     setCategory('Prosedur');
-    setType('PDF');
-    setFileSize('1.5 MB');
     setUploadedFile(null);
+    setEditingId(null);
     setIsFormOpen(false);
-
-    setSuccessMsg('Dokumen formulir/prosedur baru berhasil dipublikasikan untuk publik.');
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
-  const handleDelete = (id) => {
-    setProcedures(procedures.filter(p => p.id !== id));
+  const handleDelete = (item) => {
+    setProcedures(procedures.filter(p => p.id !== item.id));
+    addLog('DELETE', 'Form & Prosedur', item.title);
     setSuccessMsg('Dokumen berhasil dihapus.');
     setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  const handleEdit = (item) => {
+    setEditingId(item.id);
+    setTitle(item.title);
+    setDescription(item.description);
+    setDepartment(item.department);
+    setCategory(item.category);
+    setType(item.type);
+    setFileSize(item.size);
+    setIsFormOpen(true);
   };
 
   return (
@@ -1092,6 +1166,7 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
             setDepartment('');
             setCategory('Prosedur');
             setUploadedFile(null);
+            setEditingId(null);
             setIsFormOpen(!isFormOpen);
           }}
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center text-sm font-medium"
@@ -1109,7 +1184,7 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
 
       {isFormOpen && (
         <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 mb-6 max-w-3xl animate-fadeIn">
-          <h3 className="text-lg font-bold mb-4 border-b pb-2 text-slate-800">Tambahkan Formulir / Prosedur Baru</h3>
+          <h3 className="text-lg font-bold mb-4 border-b pb-2 text-slate-800">{editingId ? 'Sunting Dokumen' : 'Tambahkan Formulir / Prosedur Baru'}</h3>
           <form onSubmit={handleAddProcedure}>
             {/* Step Unggah File Fisik */}
             <div className="mb-5 bg-slate-50 p-4 rounded-lg border-2 border-dashed border-slate-300 hover:border-blue-500 transition-colors">
@@ -1203,7 +1278,7 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
             </div>
 
             <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-md text-sm font-medium flex items-center justify-center gap-2">
-              <Save className="w-4 h-4" /> Publikasikan Dokumen
+              <Save className="w-4 h-4" /> {editingId ? 'Simpan Perubahan' : 'Publikasikan Dokumen'}
             </button>
           </form>
         </div>
@@ -1217,6 +1292,8 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
               <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Kategori Dokumen</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Kategori Divisi</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Format & Ukuran</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Modifikasi</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase">Oleh</th>
               <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase">Aksi</th>
             </tr>
           </thead>
@@ -1240,8 +1317,17 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">
                   <span className="font-bold">{item.type}</span> ({item.size})
                 </td>
+                <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500 font-mono">
+                  {item.modifyDate || '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600 font-semibold">
+                  {item.modifyBy || 'System'}
+                </td>
                 <td className="px-6 py-4 text-right">
-                  <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded">
+                  <button onClick={() => handleEdit(item)} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded mr-2">
+                    <Edit2 className="w-4 h-4 inline" />
+                  </button>
+                  <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded">
                     <Trash2 className="w-4 h-4 inline" />
                   </button>
                 </td>
@@ -1255,7 +1341,7 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments }) => 
 };
 
 // --- APLIKASI UTAMA APPROVAL ---
-const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routings }) => {
+const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routings, addLog }) => {
   const [notification, setNotification] = useState(null);
   const [errorBanner, setErrorBanner] = useState('');
   
@@ -1264,6 +1350,7 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formType, setFormType] = useState('');
+  const [actionComments, setActionComments] = useState({}); // State untuk menampung input komentar per item
   const [formDesc, setFormDesc] = useState('');
   const [formFile, setFormFile] = useState(null);
 
@@ -1323,6 +1410,7 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
         return app;
       });
       setApprovals(updatedList);
+      addLog('UPDATE', 'Sistem Approval', `Edit draft: ${formType}`);
       setNotification('Pengajuan berhasil diperbarui!');
     } else {
       const matchedRoute = routings.find(r => 
@@ -1353,6 +1441,7 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
       };
 
       setApprovals([newRequest, ...approvals]);
+      addLog('CREATE', 'Sistem Approval', `Pengajuan baru: ${formType}`);
       setNotification(`Pengajuan berhasil dibuat! Email dikirim ke PIC tahap 1: ${routingPath[0].email}`);
     }
 
@@ -1365,6 +1454,11 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
   };
 
   const handleEditClick = (item) => {
+    // Pengecekan Otoritas: Hanya pemilik yang boleh mengedit draf
+    if (item.requester !== user.name) {
+      setErrorBanner('Akses Ditolak! Anda hanya diperkenankan menyunting pengajuan yang Anda buat sendiri.');
+      return;
+    }
     setEditingId(item.id);
     setFormType(item.type);
     setFormDesc(item.description);
@@ -1374,21 +1468,33 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
 
   const handleDeleteApproval = (id) => {
     const checkItem = approvals.find(a => a.id === id);
+    if (!checkItem) return;
+
+    // Pengecekan Otoritas: Hanya pembuat request yang diperkenankan menghapus/membatalkan
+    if (checkItem.requester !== user.name) {
+      setErrorBanner('Akses Ditolak! Hanya pembuat pengajuan yang diperkenankan untuk menghapus atau membatalkan request ini.');
+      return;
+    }
+
     if (checkItem.status !== 'Pending') {
       setErrorBanner('Pengajuan yang sudah diproses (Disetujui/Ditolak) tidak bisa dibatalkan atau dihapus!');
       return;
     }
     setApprovals(approvals.filter(a => a.id !== id));
+    addLog('DELETE', 'Sistem Approval', `Membatalkan: ${checkItem.type}`);
     setNotification('Pengajuan berhasil dibatalkan dan dihapus.');
     setTimeout(() => setNotification(null), 3000);
   };
 
   const handleAction = (id, newStatus) => {
+    const comment = actionComments[id] || '';
     const itemIndex = approvals.findIndex(a => a.id === id);
     if (itemIndex === -1) return;
     const item = approvals[itemIndex];
     
     let updatedItem = { ...item };
+    updatedItem.status = newStatus;
+    updatedItem.lastComment = comment; // Menyimpan komentar terakhir
 
     if (newStatus === 'Approved') {
       if (item.path && item.currentStepIndex < item.path.length - 1) {
@@ -1398,12 +1504,18 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
         setTimeout(() => setNotification(null), 4000);
       } else {
         updatedItem.status = 'Approved';
+        addLog('UPDATE', 'Sistem Approval', `APPROVED: ${item.type}${comment ? ' - Pesan: ' + comment : ''}`);
         setNotification(`Approval Selesai! Email konfirmasi akhir dikirim ke Pengaju (${item.requester}).`);
         setTimeout(() => setNotification(null), 4000);
       }
     } else if (newStatus === 'Rejected') {
       updatedItem.status = 'Rejected';
+      addLog('UPDATE', 'Sistem Approval', `REJECTED: ${item.type}${comment ? ' - Alasan: ' + comment : ''}`);
       setNotification(`Pengajuan Ditolak! Email pembatalan dikirim ke Pengaju (${item.requester}).`);
+      setTimeout(() => setNotification(null), 4000);
+    } else if (newStatus === 'Hold') {
+      addLog('UPDATE', 'Sistem Approval', `HOLD: ${item.type} - Ket: ${comment}`);
+      setNotification(`Pengajuan ditangguhkan (Hold). Komentar telah disimpan.`);
       setTimeout(() => setNotification(null), 4000);
     }
 
@@ -1423,6 +1535,7 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
   const getStatusBadge = (status) => {
     switch(status) {
       case 'Approved': return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Disetujui</span>;
+      case 'Hold': return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">Hold (Ditangguhkan)</span>;
       case 'Rejected': return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Ditolak</span>;
       default: return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Menunggu</span>;
     }
@@ -1717,19 +1830,39 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
                     {item.attachment && (
                       <button 
                         onClick={() => handleDownload(item.attachment)}
-                        className="lg:hidden mt-2 flex items-center text-blue-600 text-[10px] font-bold bg-blue-50 px-2 py-1 rounded"
+                        className="lg:hidden mt-2 flex items-center text-blue-600 text-[10px] font-bold bg-blue-50 px-2 py-1 rounded w-fit"
                       >
                         <Download className="w-3 h-3 mr-1" /> Unduh Dokumen
                       </button>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end gap-2">
+                  <td className="px-6 py-4 text-right">
+                    <div className="mb-3">
+                      <input 
+                        type="text" 
+                        placeholder="Tambah komentar..."
+                        value={actionComments[item.id] || ''}
+                        onChange={(e) => setActionComments({ ...actionComments, [item.id]: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-md focus:ring-1 focus:ring-blue-500 outline-none shadow-sm"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-1.5">
                       <button 
                         onClick={() => handleAction(item.id, 'Approved')}
-                        className="text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 p-2 rounded-lg flex items-center justify-center transition-colors" 
+                        className="text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 p-2 rounded-lg flex items-center justify-center transition-colors border border-green-200" 
+                        title="Setujui Pengajuan"
                       >
                         <CheckCircle className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if(!actionComments[item.id]) { alert('Harap isi komentar untuk alasan Hold!'); return; }
+                          handleAction(item.id, 'Hold');
+                        }}
+                        className="text-orange-700 hover:text-orange-900 bg-orange-50 hover:bg-orange-100 p-2 rounded-lg flex items-center justify-center transition-colors border border-orange-200" 
+                        title="Hold / Tangguhkan"
+                      >
+                        <PauseCircle className="w-5 h-5" />
                       </button>
                       <button 
                         onClick={() => handleAction(item.id, 'Rejected')}
@@ -1756,15 +1889,29 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
   );
 };
 
-const MasterDepartmentApp = ({ departments, setDepartments }) => {
+const MasterDepartmentApp = ({ departments, setDepartments, addLog }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setDepartments([{ id: Date.now(), code, name }, ...departments]);
-    setCode(''); setName(''); setIsFormOpen(false);
+    if (editingId) {
+      setDepartments(departments.map(d => d.id === editingId ? { ...d, code, name } : d));
+      addLog('UPDATE', 'Master Departemen', name);
+    } else {
+      setDepartments([{ id: Date.now(), code, name }, ...departments]);
+      addLog('CREATE', 'Master Departemen', name);
+    }
+    setCode(''); setName(''); setEditingId(null); setIsFormOpen(false);
+  };
+
+  const handleEdit = (d) => {
+    setEditingId(d.id);
+    setCode(d.code);
+    setName(d.name);
+    setIsFormOpen(true);
   };
 
   return (
@@ -1772,7 +1919,7 @@ const MasterDepartmentApp = ({ departments, setDepartments }) => {
       <div className="flex justify-between items-center mb-6">
         <div><h2 className="text-2xl font-bold text-slate-800">Master Departemen</h2><p className="text-sm text-slate-500">Kelola data divisi/departemen.</p></div>
         <button onClick={() => setIsFormOpen(!isFormOpen)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center text-sm font-medium">
-          {isFormOpen ? 'Batal' : '+ Tambah Data'}
+          {isFormOpen ? 'Batal' : '+ Tambah Departemen'}
         </button>
       </div>
 
@@ -1792,7 +1939,13 @@ const MasterDepartmentApp = ({ departments, setDepartments }) => {
               <tr key={d.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 text-sm font-medium text-slate-900">{d.code}</td>
                 <td className="px-6 py-4 text-sm text-slate-500">{d.name}</td>
-                <td className="px-6 py-4 text-right"><button onClick={() => setDepartments(departments.filter(x => x.id !== d.id))} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5 inline" /></button></td>
+                <td className="px-6 py-4 text-right">
+                  <button onClick={() => handleEdit(d)} className="text-blue-600 hover:text-blue-900 mr-2"><Edit2 className="w-4 h-4 inline" /></button>
+                  <button onClick={() => {
+                    setDepartments(departments.filter(x => x.id !== d.id));
+                    addLog('DELETE', 'Master Departemen', d.name);
+                  }} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5 inline" /></button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1802,15 +1955,29 @@ const MasterDepartmentApp = ({ departments, setDepartments }) => {
   );
 };
 
-const MasterApprovalTypeApp = ({ approvalTypes, setApprovalTypes }) => {
+const MasterApprovalTypeApp = ({ approvalTypes, setApprovalTypes, addLog }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setApprovalTypes([{ id: Date.now(), code, name }, ...approvalTypes]);
-    setCode(''); setName(''); setIsFormOpen(false);
+    if (editingId) {
+      setApprovalTypes(approvalTypes.map(t => t.id === editingId ? { ...t, code, name } : t));
+      addLog('UPDATE', 'Master Tipe Approval', name);
+    } else {
+      setApprovalTypes([{ id: Date.now(), code, name }, ...approvalTypes]);
+      addLog('CREATE', 'Master Tipe Approval', name);
+    }
+    setCode(''); setName(''); setEditingId(null); setIsFormOpen(false);
+  };
+
+  const handleEdit = (t) => {
+    setEditingId(t.id);
+    setCode(t.code);
+    setName(t.name);
+    setIsFormOpen(true);
   };
 
   return (
@@ -1836,7 +2003,13 @@ const MasterApprovalTypeApp = ({ approvalTypes, setApprovalTypes }) => {
               <tr key={d.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 text-sm font-medium text-slate-900">{d.code}</td>
                 <td className="px-6 py-4 text-sm text-slate-500">{d.name}</td>
-                <td className="px-6 py-4 text-right"><button onClick={() => setApprovalTypes(approvalTypes.filter(x => x.id !== d.id))} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5 inline" /></button></td>
+                <td className="px-6 py-4 text-right">
+                  <button onClick={() => handleEdit(d)} className="text-blue-600 hover:text-blue-900 mr-2"><Edit2 className="w-4 h-4 inline" /></button>
+                  <button onClick={() => {
+                    setApprovalTypes(approvalTypes.filter(x => x.id !== d.id));
+                    addLog('DELETE', 'Master Tipe Approval', d.name);
+                  }} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5 inline" /></button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1846,7 +2019,7 @@ const MasterApprovalTypeApp = ({ approvalTypes, setApprovalTypes }) => {
   );
 };
 
-const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
+const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [nik, setNik] = useState('');
@@ -1877,6 +2050,7 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
         } : emp
       );
       setEmployees(updatedEmployees);
+      addLog('UPDATE', 'Master Karyawan', name);
       setSuccessBanner('Data karyawan berhasil diperbarui.');
     } else {
       const newEmp = { 
@@ -1890,6 +2064,7 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
         password: password || 'password123'
       };
       setEmployees([newEmp, ...employees]);
+      addLog('CREATE', 'Master Karyawan', name);
       setSuccessBanner('Data karyawan baru berhasil ditambahkan.');
     }
     
@@ -1969,6 +2144,7 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
 
         if (importedEmployees.length > 0) {
           setEmployees(prev => [...importedEmployees, ...prev]);
+          addLog('CREATE', 'Master Karyawan', `Import ${importedEmployees.length} data`);
           setSuccessBanner(`Berhasil mengimpor ${importedEmployees.length} data karyawan baru.`);
           setTimeout(() => setSuccessBanner(''), 4000);
         } else {
@@ -2140,7 +2316,10 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2">
                     <button onClick={() => handleEditClick(d)} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded transition-colors" title="Edit Data"><Edit2 className="w-4 h-4 inline" /></button>
-                    <button onClick={() => setEmployees(employees.filter(x => x.id !== d.id))} className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded transition-colors" title="Hapus"><Trash2 className="w-4 h-4 inline" /></button>
+                    <button onClick={() => {
+                      setEmployees(employees.filter(x => x.id !== d.id));
+                      addLog('DELETE', 'Master Karyawan', d.name);
+                    }} className="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded transition-colors" title="Hapus"><Trash2 className="w-4 h-4 inline" /></button>
                   </div>
                 </td>
               </tr>
@@ -2152,8 +2331,9 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments }) => {
   );
 };
 
-const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, employees }) => {
+const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, employees, addLog }) => {
   const [isFormOpen, setIsSEFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState({
     approvalType: '',
     department: '',
@@ -2185,17 +2365,32 @@ const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, e
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const newRouting = {
-      id: Date.now(),
-      ...formData
-    };
-    setRoutings([...routings, newRouting]);
+    if (editingId) {
+      setRoutings(routings.map(r => r.id === editingId ? { ...formData, id: editingId } : r));
+      addLog('UPDATE', 'Master Routing PIC', formData.approvalType);
+    } else {
+      const newRouting = {
+        id: Date.now(),
+        ...formData
+      };
+      setRoutings([...routings, newRouting]);
+      addLog('CREATE', 'Master Routing PIC', formData.approvalType);
+    }
+    
     setFormData({ approvalType: '', department: 'Internal Departemen', path: [{ level: 1, role: 'Supervisor', pic: '' }] });
+    setEditingId(null);
     setIsSEFormOpen(false);
   };
 
-  const handleDelete = (id) => {
-    setRoutings(routings.filter(r => r.id !== id));
+  const handleDelete = (item) => {
+    setRoutings(routings.filter(r => r.id !== item.id));
+    addLog('DELETE', 'Master Routing PIC', item.approvalType);
+  };
+
+  const handleEdit = (item) => {
+    setEditingId(item.id);
+    setFormData({ approvalType: item.approvalType, department: item.department, path: [...item.path] });
+    setIsSEFormOpen(true);
   };
 
   return (
@@ -2210,14 +2405,14 @@ const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, e
           className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md flex items-center text-sm font-medium transition-colors"
         >
           {isFormOpen ? <X className="w-4 h-4 mr-2"/> : <PlusCircle className="w-4 h-4 mr-2"/>}
-          {isFormOpen ? 'Batal' : 'Buat Routing Baru'}
+          {isFormOpen ? 'Batal' : '+ Tambah Routing'}
         </button>
       </div>
 
       {isFormOpen && (
         <div className="bg-white p-6 rounded-lg shadow-md border border-slate-200 mb-8 animate-fadeIn">
-          <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800">
-            <GitMerge className="w-5 h-5 mr-2 text-blue-600" /> Form Setup Routing
+          <h3 className="text-lg font-bold mb-4 flex items-center text-slate-800 border-b pb-2">
+            <GitMerge className="w-5 h-5 mr-2 text-blue-600" /> {editingId ? 'Edit Setup Routing' : 'Form Setup Routing Baru'}
           </h3>
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -2300,7 +2495,7 @@ const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, e
 
             <div className="flex justify-end">
               <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md font-medium flex items-center">
-                <Save className="w-4 h-4 mr-2" /> Simpan Routing
+                <Save className="w-4 h-4 mr-2" /> {editingId ? 'Update Routing' : 'Simpan Routing'}
               </button>
             </div>
           </form>
@@ -2317,9 +2512,14 @@ const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, e
                   {route.department}
                 </span>
               </div>
-              <button onClick={() => handleDelete(route.id)} className="text-slate-400 hover:text-red-600 transition-colors">
-                <Trash2 className="w-5 h-5" />
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => handleEdit(route)} className="text-blue-500 hover:text-blue-700 p-1.5 bg-blue-50 rounded-lg transition-colors">
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button onClick={() => handleDelete(route)} className="text-red-400 hover:text-red-600 p-1.5 bg-red-50 rounded-lg transition-colors">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="p-6">
               <div className="flex flex-wrap items-center gap-2">
@@ -2361,8 +2561,59 @@ const MasterRoutingApp = ({ routings, setRoutings, approvalTypes, departments, e
   );
 };
 
+// --- APLIKASI INTERNAL DASHBOARD: LOG PERUBAHAN ---
+const AuditLogApp = ({ logs }) => {
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-slate-800">Log Perubahan Audit (CRUD Tracking)</h2>
+        <p className="text-sm text-slate-500">Riwayat aktifitas modifikasi data pada sistem secara mendetail.</p>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Waktu Modifikasi</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Pelaku (Modify By)</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Tipe Aksi</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Menu Asal</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Keterangan Aktivitas</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {logs.map((log) => (
+              <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{log.modifyDate}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{log.modifyBy}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                    log.actionType === 'CREATE' ? 'bg-green-100 text-green-700' :
+                    log.actionType === 'UPDATE' ? 'bg-blue-100 text-blue-700' : 
+                    log.actionType === 'DELETE' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {log.actionType}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-medium">{log.menuAsal}</td>
+                <td className="px-6 py-4 text-sm text-slate-600">{log.description}</td>
+              </tr>
+            ))}
+            {logs.length === 0 && (
+              <tr>
+                <td colSpan="5" className="px-6 py-10 text-center text-slate-500 italic bg-white">
+                  Belum ada riwayat perubahan data.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // --- APLIKASI HAK AKSES PERAN ---
-const RoleAccessManagerApp = ({ roleAccess, setRoleAccess }) => {
+const RoleAccessManagerApp = ({ roleAccess, setRoleAccess, addLog }) => {
   const roles = ['Staff', 'Supervisor', 'Manager', 'Director', 'administrator'];
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -2388,6 +2639,7 @@ const RoleAccessManagerApp = ({ roleAccess, setRoleAccess }) => {
     });
 
     const displayRoleName = role === 'administrator' ? 'Administrator' : role;
+    addLog('UPDATE', 'Role Access', `Role ${displayRoleName} menu ${menuId}`);
     setSuccessMsg(`Perubahan akses menu untuk role ${displayRoleName} berhasil disimpan.`);
     setTimeout(() => setSuccessMsg(''), 3000);
   };
@@ -2603,9 +2855,23 @@ export default function App() {
   const [employees, setEmployees] = useState(INITIAL_EMPLOYEES);
 
   const [roleAccess, setRoleAccess] = useState(INITIAL_ROLE_ACCESS);
+  const [auditLogs, setAuditLogs] = useState([]);
+
+  const addLog = (actionType, menuAsal, entityName) => {
+    const newLog = {
+      id: Date.now(),
+      modifyDate: new Date().toLocaleString('id-ID'),
+      modifyBy: user ? user.name : 'System',
+      actionType, // 'CREATE', 'UPDATE', 'DELETE'
+      menuAsal,
+      description: `${actionType} pada ${menuAsal}: ${entityName}`
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+  };
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
+    addLog('LOGIN', 'User Session', userData.name);
     setCurrentView('dashboard');
     setActiveDashboardMenu('dashboard_home');
   };
@@ -2698,13 +2964,15 @@ export default function App() {
           </div>
         )}
         {activeDashboardMenu === 'dashboard_news' && (
-          <NewsManagerApp news={news} setNews={setNews} />
+          <NewsManagerApp news={news} setNews={setNews} addLog={addLog} user={user} />
         )}
         {activeDashboardMenu === 'dashboard_docs' && (
           <FormProcedureManagerApp 
             procedures={procedures} 
             setProcedures={setProcedures} 
             departments={departments} 
+            addLog={addLog}
+            user={user}
           />
         )}
         {activeDashboardMenu === 'dashboard_approval' && (
@@ -2714,17 +2982,18 @@ export default function App() {
             user={user}
             approvalTypes={approvalTypes}
             routings={routings}
+            addLog={addLog}
           />
         )}
         
         {activeDashboardMenu === 'master_department' && (
-          <MasterDepartmentApp departments={departments} setDepartments={setDepartments} />
+          <MasterDepartmentApp departments={departments} setDepartments={setDepartments} addLog={addLog} />
         )}
         {activeDashboardMenu === 'master_approval_type' && (
-          <MasterApprovalTypeApp approvalTypes={approvalTypes} setApprovalTypes={setApprovalTypes} />
+          <MasterApprovalTypeApp approvalTypes={approvalTypes} setApprovalTypes={setApprovalTypes} addLog={addLog} />
         )}
         {activeDashboardMenu === 'master_employee' && (
-          <MasterEmployeeApp employees={employees} setEmployees={setEmployees} departments={departments} />
+          <MasterEmployeeApp employees={employees} setEmployees={setEmployees} departments={departments} addLog={addLog} />
         )}
 
         {activeDashboardMenu === 'dashboard_routing' && (
@@ -2734,11 +3003,16 @@ export default function App() {
             approvalTypes={approvalTypes} 
             departments={departments} 
             employees={employees} 
+            addLog={addLog}
           />
         )}
 
         {activeDashboardMenu === 'master_role_access' && (
-          <RoleAccessManagerApp roleAccess={roleAccess} setRoleAccess={setRoleAccess} />
+          <RoleAccessManagerApp roleAccess={roleAccess} setRoleAccess={setRoleAccess} addLog={addLog} />
+        )}
+
+        {activeDashboardMenu === 'dashboard_logs' && (
+          <AuditLogApp logs={auditLogs} />
         )}
       </DashboardLayout>
     );
