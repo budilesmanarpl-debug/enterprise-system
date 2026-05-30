@@ -31,7 +31,9 @@ import {
   FolderOpen,
   Search,
   RefreshCw,
-  History
+  History,
+  Eye,
+  Printer
 } from 'lucide-react';
 
 // --- KONFIGURASI SESI ---
@@ -46,7 +48,7 @@ const exportToCSV = (data, filename) => {
   const cleanData = data.map(item => {
     const cleanItem = {};
     for (const key in item) {
-      if (key === 'image') continue; // Omit giant base64 image string
+      if (key === 'image' || key === 'signature') continue; // Omit giant base64 image string
       if (typeof item[key] !== 'object') {
         cleanItem[key] = item[key];
       } else if (key === 'attachment' && item[key]) {
@@ -1341,12 +1343,22 @@ const FormProcedureManagerApp = ({ procedures, setProcedures, departments, addLo
 };
 
 // --- APLIKASI UTAMA APPROVAL ---
-const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routings, addLog }) => {
+const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routings, addLog, employees }) => {
   const [notification, setNotification] = useState(null);
   const [errorBanner, setErrorBanner] = useState('');
   
   const [activeTab, setActiveTab] = useState('my_requests'); 
 
+  const getPicSignature = (picName) => {
+    const emp = employees.find(e => e.name === picName);
+    return emp ? emp.signature : null;
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const [selectedReviewItem, setSelectedReviewItem] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formType, setFormType] = useState('');
@@ -1492,13 +1504,29 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
     if (itemIndex === -1) return;
     const item = approvals[itemIndex];
     
+    // Ambil waktu saat ini
+    const now = new Date().toLocaleString('id-ID', { 
+      dateStyle: 'medium', 
+      timeStyle: 'short' 
+    });
+
     let updatedItem = { ...item };
     updatedItem.status = newStatus;
     updatedItem.lastComment = comment; // Menyimpan komentar terakhir
 
+    // Simpan riwayat ke dalam path tahap yang sedang aktif
+    const updatedPath = [...item.path];
+    updatedPath[item.currentStepIndex] = {
+      ...updatedPath[item.currentStepIndex],
+      actionDate: now,
+      comment: comment
+    };
+    updatedItem.path = updatedPath;
+
     if (newStatus === 'Approved') {
       if (item.path && item.currentStepIndex < item.path.length - 1) {
         updatedItem.currentStepIndex += 1;
+        updatedItem.status = 'Pending'; // Tetap pending karena lanjut ke level berikutnya
         const nextPic = updatedItem.path[updatedItem.currentStepIndex];
         setNotification(`Email Notifikasi dikirim ke: ${nextPic.email} (PIC: ${nextPic.pic})`);
         setTimeout(() => setNotification(null), 4000);
@@ -1530,6 +1558,11 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
     if (a.status !== 'Pending') return false;
     const currentPIC = a.path?.[a.currentStepIndex];
     return currentPIC?.pic === user.name || user.role === 'administrator';
+  });
+
+  const historyApprovals = approvals.filter(a => {
+    const hasActed = a.path.some(step => step.pic === user.name && step.actionDate);
+    return hasActed || (user.role === 'administrator' && a.status !== 'Pending');
   });
 
   const getStatusBadge = (status) => {
@@ -1571,8 +1604,8 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <button 
             onClick={() => {
-              const dataToExport = activeTab === 'my_requests' ? myRequests : inboxApprovals;
-              const filename = activeTab === 'my_requests' ? 'Daftar_Pengajuan_Saya' : 'Daftar_Persetujuan_Masuk';
+              const dataToExport = activeTab === 'my_requests' ? myRequests : activeTab === 'inbox' ? inboxApprovals : historyApprovals;
+              const filename = activeTab === 'my_requests' ? 'Daftar_Pengajuan_Saya' : activeTab === 'inbox' ? 'Daftar_Persetujuan_Masuk' : 'Riwayat_Persetujuan';
               exportToCSV(dataToExport, filename);
             }}
             className="bg-slate-700 hover:bg-slate-800 text-white px-4 py-2.5 rounded-lg flex items-center text-sm font-semibold shadow-sm transition-colors w-full sm:w-auto justify-center"
@@ -1676,6 +1709,152 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
         </div>
       )}
 
+      {/* Modal Review Detail Pengajuan & History Approval */}
+      {selectedReviewItem && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn print:bg-white print:p-0">
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              .no-print { display: none !important; }
+              body { background: white !important; }
+              .fixed.inset-0 { position: relative !important; background: white !important; padding: 0 !important; display: block !important; }
+              #printable-modal { 
+                position: relative !important; 
+                box-shadow: none !important; 
+                max-width: none !important; 
+                max-height: none !important; 
+                width: 100% !important; 
+                height: auto !important; 
+                overflow: visible !important;
+                border: none !important;
+                margin: 0 !important;
+              }
+              .overflow-y-auto { overflow: visible !important; height: auto !important; max-height: none !important; }
+              .rounded-2xl { border-radius: 0 !important; }
+            }
+          ` }} />
+          <div id="printable-modal" className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col print:shadow-none print:rounded-none print:max-h-full">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Review Detail Pengajuan</h3>
+                <p className="text-xs text-slate-500 mt-1">ID Pengajuan: REQ-{selectedReviewItem.id}</p>
+              </div>
+              <div className="flex items-center gap-2 no-print">
+                <button 
+                  onClick={handlePrint}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition-all"
+                >
+                  <Printer className="w-4 h-4" /> Cetak Dokumen
+                </button>
+                <button 
+                  onClick={() => setSelectedReviewItem(null)}
+                  className="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Ringkasan Data */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tipe Pengajuan</p>
+                  <p className="text-sm font-bold text-slate-800">{selectedReviewItem.type}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tanggal Input</p>
+                  <p className="text-sm font-bold text-slate-800">{selectedReviewItem.date}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Pengaju (Requester)</p>
+                  <p className="text-sm font-bold text-slate-800">{selectedReviewItem.requester}</p>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Lampiran File</p>
+                  {selectedReviewItem.attachment ? (
+                    <p className="text-xs font-bold text-blue-600 truncate">{selectedReviewItem.attachment.name}</p>
+                  ) : (
+                    <p className="text-xs italic text-slate-400">Tidak ada lampiran</p>
+                  )}
+                </div>
+                <div className="md:col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Keterangan / Alasan</p>
+                  <p className="text-sm text-slate-700 leading-relaxed mt-1">{selectedReviewItem.description}</p>
+                </div>
+              </div>
+
+              {/* Alur Persetujuan (Timeline) */}
+              <div>
+                <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <History className="w-4 h-4 text-blue-600" /> Melacak Status Approval
+                </h4>
+                <div className="space-y-4 relative before:absolute before:left-[15px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                  {selectedReviewItem.path.map((step, idx) => {
+                    let stepStatus = 'Waiting';
+                    if (selectedReviewItem.status === 'Approved') stepStatus = 'Approved';
+                    else if (selectedReviewItem.status === 'Rejected' && idx === selectedReviewItem.currentStepIndex) stepStatus = 'Rejected';
+                    else if (idx < selectedReviewItem.currentStepIndex) stepStatus = 'Approved';
+                    else if (idx === selectedReviewItem.currentStepIndex && selectedReviewItem.status === 'Pending') stepStatus = 'Pending';
+                    else if (idx === selectedReviewItem.currentStepIndex && selectedReviewItem.status === 'Hold') stepStatus = 'Hold';
+
+                    return (
+                      <div key={idx} className="flex items-start gap-4 relative z-10">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 shadow-sm ${
+                          stepStatus === 'Approved' ? 'bg-emerald-500 border-emerald-200 text-white' :
+                          stepStatus === 'Rejected' ? 'bg-rose-500 border-rose-200 text-white' :
+                          stepStatus === 'Pending' || stepStatus === 'Hold' ? 'bg-amber-500 border-amber-200 text-white animate-pulse' :
+                          'bg-white border-slate-200 text-slate-300'
+                        }`}>
+                          {stepStatus === 'Approved' ? <CheckCircle className="w-4 h-4" /> : 
+                           stepStatus === 'Rejected' ? <XCircle className="w-4 h-4" /> : 
+                           <span className="text-[10px] font-extrabold">{idx + 1}</span>}
+                        </div>
+                        <div className={`flex-1 p-3 rounded-xl border transition-all ${stepStatus !== 'Waiting' ? 'bg-white shadow-sm border-slate-200' : 'bg-slate-50/50 border-slate-100'}`}>
+                          <div className="flex justify-between items-start mb-1">
+                            <div>
+                              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-tight block">{step.role}</span>
+                              {step.actionDate && (
+                                <span className="text-[9px] text-slate-500 font-semibold block mt-0.5">{step.actionDate}</span>
+                              )}
+                            </div>
+                            <span className={`text-[10px] font-bold uppercase tracking-widest ${
+                              stepStatus === 'Approved' ? 'text-emerald-600' :
+                              stepStatus === 'Rejected' ? 'text-rose-600' :
+                              stepStatus === 'Hold' ? 'text-orange-600' :
+                              stepStatus === 'Pending' ? 'text-amber-600' : 'text-slate-400'
+                            }`}>{stepStatus}</span>
+                          </div>
+                          <p className="text-sm font-bold text-slate-600">{step.pic}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">{step.email}</p>
+
+                          {/* Tampilan Tanda Tangan jika sudah Approved */}
+                          {stepStatus === 'Approved' && getPicSignature(step.pic) && (
+                            <div className="mt-3 p-1.5 bg-slate-50 rounded border border-slate-100 w-fit">
+                              <p className="text-[8px] font-bold text-slate-400 uppercase mb-0.5 tracking-tighter">Digitally Signed:</p>
+                              <img 
+                                src={getPicSignature(step.pic)} 
+                                alt="PIC Signature" 
+                                className="h-9 w-auto object-contain mix-blend-multiply" 
+                              />
+                            </div>
+                          )}
+
+                          {step.comment && (
+                            <div className="mt-2 pt-2 border-t border-slate-100">
+                               <p className="text-[10px] text-blue-600 bg-blue-50/50 p-1.5 rounded mt-1.5 border border-blue-100/50 italic">"{step.comment}"</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex border-b border-slate-200 mb-6 overflow-x-auto whitespace-nowrap scrollbar-hide">
         <button 
           onClick={() => setActiveTab('my_requests')}
@@ -1688,6 +1867,12 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
           className={`px-5 py-3 font-semibold text-sm border-b-2 transition-all ${activeTab === 'inbox' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
         >
           Persetujuan Masuk ({inboxApprovals.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('history')}
+          className={`px-5 py-3 font-semibold text-sm border-b-2 transition-all ${activeTab === 'history' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+        >
+          Riwayat Proses ({historyApprovals.length})
         </button>
       </div>
 
@@ -1750,6 +1935,13 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
                     {item.status === 'Pending' ? (
                       <div className="flex justify-end gap-2">
                         <button 
+                          onClick={() => setSelectedReviewItem(item)}
+                          className="text-slate-600 hover:text-slate-900 bg-slate-100 p-1.5 rounded-lg transition-colors" 
+                          title="Review Detail"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button 
                           onClick={() => handleEditClick(item)}
                           className="text-blue-600 hover:text-blue-900 bg-blue-50 p-1.5 rounded-lg" 
                         >
@@ -1763,7 +1955,13 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
                         </button>
                       </div>
                     ) : (
-                      <span className="text-slate-400 text-xs italic">Selesai diproses</span>
+                      <button 
+                        onClick={() => setSelectedReviewItem(item)}
+                        className="text-slate-600 hover:text-slate-900 bg-slate-100 p-1.5 rounded-lg transition-colors" 
+                        title="Review Detail"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -1848,6 +2046,13 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
                     </div>
                     <div className="flex justify-end gap-1.5">
                       <button 
+                        onClick={() => setSelectedReviewItem(item)}
+                        className="text-slate-600 hover:text-slate-900 bg-slate-100 p-2 rounded-lg border border-slate-200 transition-colors" 
+                        title="Review Detail"
+                      >
+                        <Eye className="w-5 h-5" />
+                      </button>
+                      <button 
                         onClick={() => handleAction(item.id, 'Approved')}
                         className="text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 p-2 rounded-lg flex items-center justify-center transition-colors border border-green-200" 
                         title="Setujui Pengajuan"
@@ -1878,6 +2083,79 @@ const ApprovalSystemApp = ({ approvals, setApprovals, user, approvalTypes, routi
                 <tr>
                   <td colSpan="5" className="px-6 py-10 text-center text-slate-500 italic bg-white">
                     Tidak ada permohonan persetujuan baru yang membutuhkan tindakan Anda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Tanggal & ID</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Pengaju & Keterangan</th>
+                <th className="hidden lg:table-cell px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Dokumen</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status Akhir</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Review</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {historyApprovals.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                    <div className="font-bold text-slate-800">REQ-{item.id}</div>
+                    <div>{item.date}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-700">
+                    <div className="font-bold text-slate-900">{item.requester}</div>
+                    <div className="text-xs text-blue-600 mb-1 font-semibold bg-blue-50 px-2 py-0.5 rounded-md w-fit">
+                      Tipe: {item.type}
+                    </div>
+                    <div className="text-slate-500 max-w-sm truncate" title={item.description}>
+                      {item.description}
+                    </div>
+                  </td>
+                  <td className="hidden lg:table-cell px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                    {item.attachment ? (
+                      <button 
+                        onClick={() => handleDownload(item.attachment)}
+                        className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium w-fit transition-colors group"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-500 shrink-0 group-hover:scale-110 transition-transform" />
+                        <span className="truncate max-w-[120px]">{item.attachment.name}</span>
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 text-xs italic">Tanpa lampiran</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {getStatusBadge(item.status)}
+                    {/* Menampilkan waktu proses spesifik oleh user ini */}
+                    {item.path.filter(s => s.pic === user.name && s.actionDate).map((s, i) => (
+                       <div key={i} className="text-[10px] text-slate-400 mt-1">
+                         Diproses: {s.actionDate}
+                       </div>
+                    ))}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button 
+                      onClick={() => setSelectedReviewItem(item)}
+                      className="text-slate-600 hover:text-slate-900 bg-slate-100 p-2 rounded-lg border border-slate-200 transition-colors" 
+                      title="Review Detail"
+                    >
+                      <Eye className="w-5 h-5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {historyApprovals.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="px-6 py-10 text-center text-slate-500 italic bg-white">
+                    Belum ada riwayat persetujuan yang Anda tindak lanjuti.
                   </td>
                 </tr>
               )}
@@ -2029,10 +2307,42 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
   const [role, setRole] = useState('Staff');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [signature, setSignature] = useState('');
+  const [signatureName, setSignatureName] = useState('');
   const [successBanner, setSuccessBanner] = useState('');
   const [errorBanner, setErrorBanner] = useState('');
 
   const availableRoles = ['Staff', 'Supervisor', 'Manager', 'Director', 'administrator'];
+
+  // Handle signature upload with auto-resize to 188x44 (1:4)
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setErrorBanner('Format file salah! Harap pilih jenis berkas gambar saja.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Set target resolution 180x60 (Proporsi 1:3)
+          // Pada web standar (96 DPI), ukuran ini mewakili dimensi fisik yang diminta.
+          canvas.width = 180;
+          canvas.height = 60;
+          
+          ctx.drawImage(img, 0, 0, 180, 60);
+          setSignature(canvas.toDataURL('image/png'));
+          setSignatureName(file.name);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -2046,7 +2356,8 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
           department,
           role,
           username: username || emp.username,
-          password: password || emp.password
+          password: password || emp.password,
+          signature: signature || emp.signature
         } : emp
       );
       setEmployees(updatedEmployees);
@@ -2061,7 +2372,8 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
         department, 
         role,
         username: username || name.toLowerCase().replace(/\s+/g, ''), 
-        password: password || 'password123'
+        password: password || 'password123',
+        signature
       };
       setEmployees([newEmp, ...employees]);
       addLog('CREATE', 'Master Karyawan', name);
@@ -2071,6 +2383,7 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
     setNik(''); setName(''); setEmail(''); 
     setDepartment(''); setRole('Staff');
     setUsername(''); setPassword('');
+    setSignature(''); setSignatureName('');
     setIsFormOpen(false);
     setEditingId(null);
     setTimeout(() => setSuccessBanner(''), 4000);
@@ -2167,6 +2480,8 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
     setRole(emp.role);
     setUsername(emp.username || '');
     setPassword(''); // Kosongkan, isi hanya jika ingin mengganti
+    setSignature(emp.signature || '');
+    setSignatureName('');
     setIsFormOpen(true);
   };
 
@@ -2285,6 +2600,43 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
             </div>
           </div>
 
+          {/* Upload Signature Section */}
+          <div className="border-t border-slate-100 md:col-span-2 my-2 pt-4">
+            <h4 className="font-bold text-slate-800 text-sm mb-2">Tanda Tangan Digital (Signature)</h4>
+            <div className="flex flex-col md:flex-row items-center gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+               <div className="flex-1 w-full">
+                  <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-lg p-4 cursor-pointer transition-colors bg-white relative">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handleSignatureUpload} 
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                    />
+                    <div className="text-center relative z-20">
+                      <FileUp className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                      <span className="text-xs text-slate-600 font-semibold block">Klik untuk Unggah TTD</span>
+                      <span className="text-[10px] text-slate-400">Resized to 180x60 (80-96 DPI)</span>
+                    </div>
+                  </div>
+               </div>
+               {signature && (
+                 <div className="shrink-0 flex flex-col items-center gap-2">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Preview (1:3):</p>
+                    <div className="border border-slate-300 bg-white p-1 rounded shadow-sm">
+                      <img src={signature} alt="Signature Preview" className="w-[180px] h-[60px] object-contain bg-white" />
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => { setSignature(''); setSignatureName(''); }}
+                      className="text-[10px] text-red-500 font-bold hover:underline"
+                    >
+                      Hapus TTD
+                    </button>
+                 </div>
+               )}
+            </div>
+          </div>
+
           <div className="col-span-2 flex justify-end">
             <button type="submit" className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md font-medium transition-colors shadow-sm">{editingId ? 'Update Data Karyawan' : 'Simpan Karyawan'}</button>
           </div>
@@ -2299,6 +2651,7 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Departemen</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Role / Posisi</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Signature</th>
               <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Aksi</th>
             </tr>
           </thead>
@@ -2313,6 +2666,15 @@ const MasterEmployeeApp = ({ employees, setEmployees, departments, addLog }) => 
                 <td className="px-6 py-4 text-sm text-slate-500">{d.email}</td>
                 <td className="px-6 py-4 text-sm text-slate-500">{d.department}</td>
                 <td className="px-6 py-4 text-sm text-slate-500"><span className="bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs font-semibold">{d.role === 'administrator' ? 'Administrator' : d.role}</span></td>
+                <td className="px-6 py-4">
+                  {d.signature ? (
+                    <div className="border border-slate-200 bg-white rounded p-0.5 w-[90px] h-[30px]">
+                      <img src={d.signature} alt="TTD" className="w-full h-full object-contain" />
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">No Signature</span>
+                  )}
+                </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex justify-end gap-2">
                     <button onClick={() => handleEditClick(d)} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded transition-colors" title="Edit Data"><Edit2 className="w-4 h-4 inline" /></button>
@@ -2841,9 +3203,23 @@ const DashboardLayout = ({ user, onLogout, children, activeMenu, setActiveMenu, 
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('portal');
+  const [currentView, setCurrentView] = useState(() => {
+    const saved = localStorage.getItem('corp_system_session');
+    if (saved) {
+      const { timestamp } = JSON.parse(saved);
+      if (Date.now() - timestamp < INACTIVITY_TIMEOUT) return 'dashboard';
+    }
+    return 'portal';
+  });
   const [activeDashboardMenu, setActiveDashboardMenu] = useState('dashboard_home');
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('corp_system_session');
+    if (saved) {
+      const { user: u, timestamp } = JSON.parse(saved);
+      if (Date.now() - timestamp < INACTIVITY_TIMEOUT) return u;
+    }
+    return null;
+  });
   
   const [news, setNews] = useState(INITIAL_NEWS);
   const [procedures, setProcedures] = useState(INITIAL_PROCEDURES); // State Berkas Prosedur
@@ -2871,6 +3247,10 @@ export default function App() {
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
+    localStorage.setItem('corp_system_session', JSON.stringify({ 
+      user: userData, 
+      timestamp: Date.now() 
+    }));
     addLog('LOGIN', 'User Session', userData.name);
     setCurrentView('dashboard');
     setActiveDashboardMenu('dashboard_home');
@@ -2878,6 +3258,7 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    localStorage.removeItem('corp_system_session');
     setCurrentView('portal');
   };
 
@@ -2890,6 +3271,14 @@ export default function App() {
 
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId);
+      
+      // Perbarui timestamp di localStorage setiap ada aktivitas 
+      // agar sesi tetap valid saat browser di-refresh
+      localStorage.setItem('corp_system_session', JSON.stringify({ 
+        user, 
+        timestamp: Date.now() 
+      }));
+
       // Set timer untuk memicu auto logout
       timeoutId = setTimeout(() => {
         handleLogout();
@@ -2983,6 +3372,7 @@ export default function App() {
             approvalTypes={approvalTypes}
             routings={routings}
             addLog={addLog}
+            employees={employees}
           />
         )}
         
